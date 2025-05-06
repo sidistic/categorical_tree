@@ -37,12 +37,13 @@ class CategoricalDecisionTree:
     """
     
     def __init__(self, criterion='gini', max_depth=None, min_samples_split=2,
-                 min_samples_leaf=1, feature_types=None):
+             min_samples_leaf=1, feature_types=None, feature_names=None):
         self.criterion = criterion
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.min_samples_leaf = min_samples_leaf
         self.feature_types = feature_types
+        self.feature_names = feature_names
         self.root = None
         self.n_classes_ = None
         self.classes_ = None
@@ -64,7 +65,18 @@ class CategoricalDecisionTree:
         self : object
         """
         # Convert input to numpy arrays
-        X = np.asarray(X)
+
+        if hasattr(X, 'values'):  # Check if it's a DataFrame
+            # Save column names before converting to numpy
+            if self.feature_names is None:
+                self.feature_names = X.columns.tolist()
+            X = X.values
+        else:
+            X = np.asarray(X)
+            # If feature names weren't provided and X isn't a DataFrame, create default names
+            if self.feature_names is None:
+                self.feature_names = [f"feature_{i}" for i in range(X.shape[1])]
+
         y = np.asarray(y)
         
         # Determine feature types if not provided
@@ -248,3 +260,117 @@ class CategoricalDecisionTree:
         # Normalize
         if np.any(self.feature_importances_):
             self.feature_importances_ /= np.sum(self.feature_importances_)
+
+    def decision_path(self, X):
+        """
+        Return the decision path for samples in X.
+        
+        Parameters:
+        -----------
+        X : array-like of shape (n_samples, n_features)
+            The input samples.
+            
+        Returns:
+        --------
+        paths : list of list
+            A list of decision paths for each sample. Each path is a list of
+            dictionaries, with each dictionary containing:
+            - 'node': the Node object
+            - 'feature': the feature name
+            - 'decision': the decision made (e.g., '<=', '>', 'in')
+            - 'threshold' or 'values': threshold for numerical, values for categorical
+        """
+        X = np.asarray(X)
+        paths = []
+        
+        for sample in X:
+            path = []
+            node = self.root
+            
+            while not node.is_leaf:
+                feature_idx = node.feature_index
+                feature_name = self.feature_names[feature_idx]
+                feature_value = sample[feature_idx]
+                
+                decision_info = {
+                    'node': node,
+                    'feature': feature_name
+                }
+                
+                if node.feature_type == 'categorical':
+                    if feature_value not in node.category_map:
+                        # Default to most common category
+                        child_idx = max(node.category_map.values(), key=list(node.category_map.values()).count)
+                        decision_info['decision'] = 'not found, using default'
+                    else:
+                        child_idx = node.category_map[feature_value]
+                        decision_info['decision'] = 'in'
+                    
+                    # Find all values that map to this child
+                    values = [v for v, idx in node.category_map.items() if idx == child_idx]
+                    decision_info['values'] = values
+                    
+                    path.append(decision_info)
+                    
+                    if child_idx < len(node.children):
+                        node = node.children[child_idx]
+                    else:
+                        break
+                else:
+                    # Numerical feature
+                    decision_info['threshold'] = node.threshold
+                    
+                    if feature_value <= node.threshold:
+                        decision_info['decision'] = '<='
+                        if len(node.children) > 0:
+                            node = node.children[0]  # Left child
+                        else:
+                            break
+                    else:
+                        decision_info['decision'] = '>'
+                        if len(node.children) > 1:
+                            node = node.children[1]  # Right child
+                        else:
+                            break
+                            
+                    path.append(decision_info)
+            
+            paths.append(path)
+        
+        return paths
+
+    def decision_path_to_text(self, X):
+        """
+        Return the decision paths as human-readable text.
+        
+        Parameters:
+        -----------
+        X : array-like of shape (n_samples, n_features)
+            The input samples.
+            
+        Returns:
+        --------
+        path_texts : list of str
+            A list of text descriptions of decision paths for each sample.
+        """
+        paths = self.decision_path(X)
+        path_texts = []
+        
+        for i, path in enumerate(paths):
+            path_text = [f"Sample {i} decision path:"]
+            
+            for step in path:
+                feature = step['feature']
+                
+                if step['decision'] == 'in':
+                    values_str = ', '.join([str(v) for v in step['values']])
+                    path_text.append(f"- {feature} in [{values_str}]")
+                elif step['decision'] == 'not found, using default':
+                    values_str = ', '.join([str(v) for v in step['values']])
+                    path_text.append(f"- {feature} value not in training data, using default path [{values_str}]")
+                else:
+                    path_text.append(f"- {feature} {step['decision']} {step['threshold']:.4f}")
+            
+            path_texts.append('\n'.join(path_text))
+        
+        return path_texts
