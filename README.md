@@ -54,6 +54,10 @@ from categorical_tree.visualization import export_text, display_tree
 print(export_text(tree))
 display_tree(tree, class_names=['Class1', 'Class2'])
 ```
+
+## Example output
+Here if the person in the datapoint is going to buy a home then O/p = 1
+![Decision Tree](examples/example.png "Decision Tree Visualization: Buy = 1 ")
 ## Requirements
 
 - NumPy
