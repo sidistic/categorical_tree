@@ -58,9 +58,12 @@ accuracy = accuracy_score(y_test, y_pred)
 print(f"Accuracy: {accuracy:.2f}")
 
 # Visualize the tree
-from categorical_tree.visualization import export_text
+from categorical_tree.visualization import export_text, display_tree
 print(export_text(tree))
 
 # Feature importances
 for i, importance in enumerate(tree.feature_importances_):
     print(f"Feature {X.columns[i]}: {importance:.4f}")
+
+display_tree(tree, save_path= "example.png")
+
